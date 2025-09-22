@@ -90,15 +90,49 @@
             transition: all 0.3s ease;
         }
 
-        .ball.falling {
-            animation: fall 1s ease-in forwards;
+        .ball.drawn {
+            animation: floatAndExplode 3s ease-out forwards;
+            z-index: 100;
         }
 
-        @keyframes fall {
-            to {
-                transform: translateY(250px);
+        @keyframes floatAndExplode {
+            0% {
+                transform: scale(1) translateY(0);
+                opacity: 1;
+            }
+            70% {
+                transform: scale(3) translateY(-150px);
+                opacity: 1;
+            }
+            85% {
+                transform: scale(3.5) translateY(-150px);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(4) translateY(-150px);
                 opacity: 0;
             }
+        }
+
+        @keyframes explosion {
+            0% {
+                transform: scale(3.5);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(5);
+                opacity: 0.8;
+                box-shadow: 0 0 30px #FFD700, 0 0 60px #FF6B6B;
+            }
+            100% {
+                transform: scale(8);
+                opacity: 0;
+                box-shadow: 0 0 50px #FFD700, 0 0 100px #FF6B6B;
+            }
+        }
+
+        .ball.exploding {
+            animation: explosion 0.5s ease-out forwards;
         }
 
         .controls {
@@ -228,13 +262,28 @@
                 this.element.style.top = this.y + 'px';
             }
 
-            fall() {
-                this.element.classList.add('falling');
+            floatAndExplode(callback) {
+                this.element.classList.add('drawn');
+
+                // After floating animation completes (3 seconds), trigger explosion and callback
                 setTimeout(() => {
-                    if (this.element.parentNode) {
-                        this.element.parentNode.removeChild(this.element);
+                    this.element.classList.remove('drawn');
+                    this.element.classList.add('exploding');
+
+                    // Call callback to update scoreboard during explosion
+                    if (callback) {
+                        setTimeout(() => {
+                            callback(this.name);
+                        }, 100); // Show name slightly after explosion starts
                     }
-                }, 1000);
+
+                    // Remove element after explosion
+                    setTimeout(() => {
+                        if (this.element.parentNode) {
+                            this.element.parentNode.removeChild(this.element);
+                        }
+                    }, 500); // Wait for explosion animation to complete
+                }, 3000); // Wait for float animation to complete
             }
         }
 
@@ -265,14 +314,19 @@
                 requestAnimationFrame(() => this.animate());
             }
 
-            drawBall() {
+            drawBall(callback) {
                 if (this.balls.length === 0) return null;
 
                 const randomIndex = Math.floor(Math.random() * this.balls.length);
                 const drawnBall = this.balls.splice(randomIndex, 1)[0];
-                drawnBall.fall();
 
-                return drawnBall.name;
+                // Return a promise that resolves when the animation completes
+                return new Promise((resolve) => {
+                    drawnBall.floatAndExplode((name) => {
+                        if (callback) callback(name);
+                        resolve(name);
+                    });
+                });
             }
         }
 
@@ -350,16 +404,22 @@
                 updateGameStatus(`Drawing from box ${i + 1}...`);
                 await new Promise(resolve => setTimeout(resolve, 1000));
 
-                const drawnName = boxes[i].drawBall();
-                if (drawnName) {
+                // Use the new drawBall method that returns a promise
+                const drawResult = boxes[i].drawBall((name) => {
+                    // This callback will be called when the ball explodes
+                    scoreboards[i].textContent = name;
+                });
+
+                if (drawResult) {
+                    const drawnName = await drawResult;
                     results.push(drawnName);
-                    scoreboards[i].textContent = drawnName;
                 } else {
                     results.push('Empty');
                     scoreboards[i].textContent = 'Empty';
                 }
 
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                // Wait a bit before moving to next box
+                await new Promise(resolve => setTimeout(resolve, 500));
             }
 
             // Check for winner
