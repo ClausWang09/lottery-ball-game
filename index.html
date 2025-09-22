@@ -390,6 +390,13 @@
             continuousBtn.disabled = true;
             const results = [];
 
+            // If game ended (winner was found), clear scoreboards first
+            if (gameEnded) {
+                clearScoreboards();
+                gameEnded = false;
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
             // Check if any box can draw (has balls)
             const canDraw = boxes.some(box => box.balls.length > 0);
             if (!canDraw) {
@@ -426,7 +433,7 @@
             const winner = checkWinner(results);
             if (winner) {
                 highlightWinner(winner, results);
-                updateGameStatus(`🎉 Winner: ${winner}! 🎉`);
+                updateGameStatus(`🎉 Winner: ${winner}! Press Start Drawing to continue! 🎉`);
                 gameEnded = true;
                 isContinuousMode = false;
             } else {
