@@ -191,7 +191,7 @@
             align-items: flex-start;
             gap: 40px;
             width: 100%;
-            max-width: 1200px;
+            max-width: 1000px;
         }
 
         .game-area {
@@ -302,11 +302,98 @@
             font-style: italic;
             padding: 20px 0;
         }
+
+        .participants-panel {
+            width: 100%;
+            max-width: 1000px;
+            background: linear-gradient(145deg, rgba(135,206,250,0.1), rgba(100,149,237,0.05));
+            border: 2px solid rgba(135,206,250,0.6);
+            border-radius: 20px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+        }
+
+
+        .participants-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(135,206,250,0.5) transparent;
+        }
+
+        .participants-list::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .participants-list::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+        }
+
+        .participants-list::-webkit-scrollbar-thumb {
+            background: rgba(135,206,250,0.5);
+            border-radius: 3px;
+        }
+
+        .participant-item {
+            background: linear-gradient(135deg, rgba(135,206,250,0.15), rgba(100,149,237,0.1));
+            border: 1px solid rgba(135,206,250,0.3);
+            border-radius: 8px;
+            padding: 8px 12px;
+            color: white;
+            font-size: 13px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            min-width: 120px;
+            flex: 0 0 auto;
+        }
+
+        .participant-name {
+            font-weight: bold;
+            flex: 1;
+        }
+
+        .participant-probability {
+            background: rgba(135,206,250,0.8);
+            color: #333;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: bold;
+            min-width: 38px;
+            text-align: center;
+            margin-left: 8px;
+        }
+
+        .participant-item.eliminated {
+            opacity: 0.4;
+            background: linear-gradient(135deg, rgba(128,128,128,0.15), rgba(64,64,64,0.1));
+            border-color: rgba(128,128,128,0.3);
+        }
+
+        .participant-item.eliminated .participant-probability {
+            background: rgba(128,128,128,0.6);
+            color: #666;
+        }
     </style>
 </head>
 <body>
     <div class="game-container">
-        <h1 style="color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); margin-bottom: 30px;">Lottery Ball Game</h1>
+        <h1 style="color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); margin-bottom: 15px;">Lottery Ball Game</h1>
+
+        <div class="participants-panel">
+            <div class="participants-list" id="participantsList">
+                <!-- Participants will be populated by JavaScript -->
+            </div>
+        </div>
 
         <div class="main-content">
             <div class="game-area">
@@ -323,12 +410,11 @@
                 </div>
 
                 <div class="controls">
-                    <button class="btn draw-btn" id="drawBtn">Start Drawing</button>
                     <button class="btn draw-btn" id="continuousBtn">Continuous Draw</button>
                     <button class="btn restart-btn" id="restartBtn">Restart Game</button>
                 </div>
 
-                <div class="game-status" id="gameStatus">Press "Start Drawing" to begin!</div>
+                <div class="game-status" id="gameStatus">Press "Continuous Draw" to begin!</div>
             </div>
 
             <div class="winners-panel">
@@ -357,8 +443,70 @@
         let winnerCount = 0;
         let winners = [];
 
-        // Get winners list element
+        // Get UI elements
         const winnersList = document.getElementById('winnersList');
+        const participantsList = document.getElementById('participantsList');
+
+        // Calculate winning probability for a participant
+        function calculateWinningProbability(participantName) {
+            // Get the probability of drawing this participant from each box
+            const probabilities = [];
+
+            for (let i = 0; i < 3; i++) {
+                const box = boxes[i];
+                const participantBalls = box.balls.filter(ball => ball.name === participantName).length;
+                const totalBalls = box.balls.length;
+
+                if (totalBalls === 0) {
+                    probabilities.push(0);
+                } else {
+                    probabilities.push(participantBalls / totalBalls);
+                }
+            }
+
+            // If no balls left for this participant in any box, probability is 0
+            if (probabilities.every(p => p === 0)) return 0;
+
+            const [p1, p2, p3] = probabilities;
+
+            // Calculate P(at least 2 successes in 3 independent trials)
+            // P(at least 2) = P(exactly 2) + P(exactly 3)
+
+            // P(exactly 2) = P(success in boxes 1&2, fail in 3) +
+            //                 P(success in boxes 1&3, fail in 2) +
+            //                 P(success in boxes 2&3, fail in 1)
+            const pExactly2 = (p1 * p2 * (1 - p3)) +
+                             (p1 * (1 - p2) * p3) +
+                             ((1 - p1) * p2 * p3);
+
+            // P(exactly 3) = P(success in all 3 boxes)
+            const pExactly3 = p1 * p2 * p3;
+
+            // Total winning probability
+            const totalProbability = pExactly2 + pExactly3;
+
+            return Math.min(totalProbability * 100, 100); // Convert to percentage, cap at 100%
+        }
+
+        // Update participants list with current probabilities
+        function updateParticipantsList() {
+            participantsList.innerHTML = '';
+
+            names.forEach(name => {
+                const probability = calculateWinningProbability(name);
+                const isEliminated = probability === 0;
+
+                const participantDiv = document.createElement('div');
+                participantDiv.className = `participant-item ${isEliminated ? 'eliminated' : ''}`;
+
+                participantDiv.innerHTML = `
+                    <span class="participant-name">${name}</span>
+                    <span class="participant-probability">${probability.toFixed(1)}%</span>
+                `;
+
+                participantsList.appendChild(participantDiv);
+            });
+        }
 
         class Ball {
             constructor(name, boxElement) {
@@ -478,7 +626,6 @@
             document.getElementById('scoreboard3')
         ];
 
-        const drawBtn = document.getElementById('drawBtn');
         const continuousBtn = document.getElementById('continuousBtn');
         const restartBtn = document.getElementById('restartBtn');
         const gameStatus = document.getElementById('gameStatus');
@@ -547,7 +694,6 @@
 
         async function drawSequence() {
             isDrawing = true;
-            drawBtn.disabled = true;
             continuousBtn.disabled = true;
             const results = [];
 
@@ -555,6 +701,8 @@
             if (gameEnded) {
                 clearScoreboards();
                 gameEnded = false;
+                // Update probabilities after clearing scoreboards
+                updateParticipantsList();
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
 
@@ -563,7 +711,6 @@
             if (!canDraw) {
                 updateGameStatus('No balls left! Game over.');
                 isDrawing = false;
-                drawBtn.disabled = false;
                 continuousBtn.disabled = false;
                 return;
             }
@@ -586,6 +733,9 @@
                     scoreboards[i].textContent = 'Empty';
                 }
 
+                // Update probabilities after each ball is drawn
+                updateParticipantsList();
+
                 // Wait a bit before moving to next box
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
@@ -595,7 +745,7 @@
             if (winner) {
                 highlightWinner(winner, results);
                 addWinner(winner);
-                updateGameStatus(`🎉 Winner: ${winner}! Press Start Drawing to continue! 🎉`);
+                updateGameStatus(`🎉 Winner: ${winner}! Press Continuous Draw to continue! 🎉`);
                 gameEnded = true;
                 isContinuousMode = false;
             } else {
@@ -603,6 +753,8 @@
                     updateGameStatus('No winner this round. Continuing...');
                     await new Promise(resolve => setTimeout(resolve, 2000));
                     clearScoreboards();
+                    // Update probabilities before next round
+                    updateParticipantsList();
                     await new Promise(resolve => setTimeout(resolve, 500));
                     // Continue with next round
                     drawSequence();
@@ -616,8 +768,10 @@
             }
 
             isDrawing = false;
-            drawBtn.disabled = false;
             continuousBtn.disabled = false;
+
+            // Update probabilities after drawing round
+            updateParticipantsList();
         }
 
         function restartGame() {
@@ -625,7 +779,6 @@
             isDrawing = false;
             gameEnded = false;
             isContinuousMode = false;
-            drawBtn.disabled = false;
             continuousBtn.disabled = false;
 
             // Clear scoreboards
@@ -637,17 +790,13 @@
             // Reinitialize all boxes
             boxes.forEach(box => box.initBalls());
 
-            updateGameStatus('Press "Start Drawing" to begin!');
+            // Update probabilities after restart
+            updateParticipantsList();
+
+            updateGameStatus('Press "Continuous Draw" to begin!');
         }
 
         // Event listeners
-        drawBtn.addEventListener('click', () => {
-            if (!isDrawing) {
-                isContinuousMode = false;
-                drawSequence();
-            }
-        });
-
         continuousBtn.addEventListener('click', () => {
             if (!isDrawing) {
                 isContinuousMode = true;
@@ -657,8 +806,9 @@
 
         restartBtn.addEventListener('click', restartGame);
 
-        // Initialize game status
-        updateGameStatus('Press "Start Drawing" to begin!');
+        // Initialize game status and participants list
+        updateGameStatus('Press "Continuous Draw" to begin!');
+        updateParticipantsList();
     </script>
 </body>
 </html>
